@@ -486,58 +486,119 @@ def generate_new_decomp_schedule(persona, inserted_act, inserted_act_dur,  start
 # CHAPTER 3: Plan
 ##############################################################################
 
-def revise_identity(persona): 
-  p_name = persona.scratch.name
+# def revise_identity(persona): 
+#   p_name = persona.scratch.name
 
-  focal_points = [f"{p_name}'s plan for {persona.scratch.get_str_curr_date_str()}.",
-                  f"Important recent events for {p_name}'s life."]
-  retrieved = new_retrieve(persona, focal_points)
+#   focal_points = [f"{p_name}'s plan for {persona.scratch.get_str_curr_date_str()}.",
+#                   f"Important recent events for {p_name}'s life."]
+#   retrieved = new_retrieve(persona, focal_points)
 
-  statements = "[Statements]\n"
-  for key, val in retrieved.items():
-    for i in val: 
-      statements += f"{i.created.strftime('%A %B %d -- %H:%M %p')}: {i.embedding_key}\n"
+#   statements = "[Statements]\n"
+#   for key, val in retrieved.items():
+#     for i in val: 
+#       statements += f"{i.created.strftime('%A %B %d -- %H:%M %p')}: {i.embedding_key}\n"
 
-  # print (";adjhfno;asdjao;idfjo;af", p_name)
-  plan_prompt = statements + "\n"
-  plan_prompt += f"Given the statements above, is there anything that {p_name} should remember as they plan for"
-  plan_prompt += f" *{persona.scratch.curr_time.strftime('%A %B %d')}*? "
-  plan_prompt += f"If there is any scheduling information, be as specific as possible (include date, time, and location if stated in the statement)\n\n"
-  plan_prompt += f"Write the response from {p_name}'s perspective."
-  plan_note = ChatGPT_single_request(plan_prompt)
-  # print (plan_note)
+#   # print (";adjhfno;asdjao;idfjo;af", p_name)
+#   plan_prompt = statements + "\n"
+#   plan_prompt += f"Given the statements above, is there anything that {p_name} should remember as they plan for"
+#   plan_prompt += f" *{persona.scratch.curr_time.strftime('%A %B %d')}*? "
+#   plan_prompt += f"If there is any scheduling information, be as specific as possible (include date, time, and location if stated in the statement)\n\n"
+#   plan_prompt += f"Write the response from {p_name}'s perspective."
+#   plan_note = ChatGPT_single_request(plan_prompt)
+#   # print (plan_note)
 
-  thought_prompt = statements + "\n"
-  thought_prompt += f"Given the statements above, how might we summarize {p_name}'s feelings about their days up to now?\n\n"
-  thought_prompt += f"Write the response from {p_name}'s perspective."
-  thought_note = ChatGPT_single_request(thought_prompt)
-  # print (thought_note)
+#   thought_prompt = statements + "\n"
+#   thought_prompt += f"Given the statements above, how might we summarize {p_name}'s feelings about their days up to now?\n\n"
+#   thought_prompt += f"Write the response from {p_name}'s perspective."
+#   thought_note = ChatGPT_single_request(thought_prompt)
+#   # print (thought_note)
 
-  currently_prompt = f"{p_name}'s status from {(persona.scratch.curr_time - datetime.timedelta(days=1)).strftime('%A %B %d')}:\n"
-  currently_prompt += f"{persona.scratch.currently}\n\n"
-  currently_prompt += f"{p_name}'s thoughts at the end of {(persona.scratch.curr_time - datetime.timedelta(days=1)).strftime('%A %B %d')}:\n" 
-  currently_prompt += (plan_note + thought_note).replace('\n', '') + "\n\n"
-  currently_prompt += f"It is now {persona.scratch.curr_time.strftime('%A %B %d')}. Given the above, write {p_name}'s status for {persona.scratch.curr_time.strftime('%A %B %d')} that reflects {p_name}'s thoughts at the end of {(persona.scratch.curr_time - datetime.timedelta(days=1)).strftime('%A %B %d')}. Write this in third-person talking about {p_name}."
-  currently_prompt += f"If there is any scheduling information, be as specific as possible (include date, time, and location if stated in the statement).\n\n"
-  currently_prompt += "Follow this format below:\nStatus: <new status>"
-  # print ("DEBUG ;adjhfno;asdjao;asdfsidfjo;af", p_name)
-  # print (currently_prompt)
-  new_currently = ChatGPT_single_request(currently_prompt)
-  # print (new_currently)
-  # print (new_currently[10:])
+#   currently_prompt = f"{p_name}'s status from {(persona.scratch.curr_time - datetime.timedelta(days=1)).strftime('%A %B %d')}:\n"
+#   currently_prompt += f"{persona.scratch.currently}\n\n"
+#   currently_prompt += f"{p_name}'s thoughts at the end of {(persona.scratch.curr_time - datetime.timedelta(days=1)).strftime('%A %B %d')}:\n" 
+#   currently_prompt += (plan_note + thought_note).replace('\n', '') + "\n\n"
+#   currently_prompt += f"It is now {persona.scratch.curr_time.strftime('%A %B %d')}. Given the above, write {p_name}'s status for {persona.scratch.curr_time.strftime('%A %B %d')} that reflects {p_name}'s thoughts at the end of {(persona.scratch.curr_time - datetime.timedelta(days=1)).strftime('%A %B %d')}. Write this in third-person talking about {p_name}."
+#   currently_prompt += f"If there is any scheduling information, be as specific as possible (include date, time, and location if stated in the statement).\n\n"
+#   currently_prompt += "Follow this format below:\nStatus: <new status>"
+#   # print ("DEBUG ;adjhfno;asdjao;asdfsidfjo;af", p_name)
+#   # print (currently_prompt)
+#   new_currently = ChatGPT_single_request(currently_prompt)
+#   # print (new_currently)
+#   # print (new_currently[10:])
 
-  persona.scratch.currently = new_currently
+#   persona.scratch.currently = new_currently
 
-  daily_req_prompt = persona.scratch.get_str_iss() + "\n"
-  daily_req_prompt += f"Today is {persona.scratch.curr_time.strftime('%A %B %d')}. Here is {persona.scratch.name}'s plan today in broad-strokes (with the time of the day. e.g., have a lunch at 12:00 pm, watch TV from 7 to 8 pm).\n\n"
-  daily_req_prompt += f"Follow this format (the list should have 4~6 items but no more):\n"
-  daily_req_prompt += f"1. wake up and complete the morning routine at <time>, 2. ..."
+#   daily_req_prompt = persona.scratch.get_str_iss() + "\n"
+#   daily_req_prompt += f"Today is {persona.scratch.curr_time.strftime('%A %B %d')}. Here is {persona.scratch.name}'s plan today in broad-strokes (with the time of the day. e.g., have a lunch at 12:00 pm, watch TV from 7 to 8 pm).\n\n"
+#   daily_req_prompt += f"Follow this format (the list should have 4 items but no more):\n"
+#   daily_req_prompt += f"1. wake up and complete your assigned task of search and rescue at <time>, 2. ..."
 
-  new_daily_req = ChatGPT_single_request(daily_req_prompt)
-  new_daily_req = new_daily_req.replace('\n', ' ')
-  print ("DEBUG new_daily_req:", new_daily_req)
-  persona.scratch.daily_plan_req = new_daily_req
+#   new_daily_req = ChatGPT_single_request(daily_req_prompt)
+#   new_daily_req = new_daily_req.replace('\n', ' ')
+#   print ("DEBUG new_daily_req:", new_daily_req)
+#   persona.scratch.daily_plan_req = new_daily_req
 
+#NEW
+def revise_identity(persona):
+    p_name = persona.scratch.name
+
+    # Define focal points for retrieval
+    focal_points = [
+        f"{p_name}'s plan for {persona.scratch.get_str_curr_date_str()}.",
+        f"Important recent events for {p_name}'s mission progress."
+    ]
+    retrieved = new_retrieve(persona, focal_points)
+
+    # Format retrieved statements
+    statements = "[Statements]\n"
+    for key, val in retrieved.items():
+        for i in val: 
+            statements += f"{i.created.strftime('%A %B %d -- %H:%M %p')}: {i.embedding_key}\n"
+
+    # Mission Review: What has been accomplished?
+    mission_review_prompt = statements + "\n"
+    mission_review_prompt += (
+        f"Given the above, what progress has {p_name} made toward their search and rescue task? "
+        f"Identify key successes, obstacles, and whether the mission is completed. "
+        f"Write from {p_name}'s perspective."
+    )
+    mission_review = ChatGPT_single_request(mission_review_prompt)
+
+    # Thought Summary: How does the agent feel about its progress?
+    thought_prompt = statements + "\n"
+    thought_prompt += f"Summarize {p_name}'s overall feelings about their mission performance up to now.\n\n"
+    thought_prompt += f"Write the response from {p_name}'s perspective."
+    thought_note = ChatGPT_single_request(thought_prompt)
+
+    # Generate new status update based on mission review
+    currently_prompt = f"{p_name}'s status from {(persona.scratch.curr_time - datetime.timedelta(days=1)).strftime('%A %B %d')}:\n"
+    currently_prompt += f"{persona.scratch.currently}\n\n"
+    currently_prompt += f"Mission Review:\n{mission_review}\n\n"
+    currently_prompt += f"Thoughts:\n{thought_note}\n\n"
+    currently_prompt += (
+        f"It is now {persona.scratch.curr_time.strftime('%A %B %d')}. Based on the above, generate an updated status "
+        f"reflecting {p_name}'s thoughts on their mission progress. Ensure they remain focused on their search and rescue task. "
+        f"If there are pending objectives, make them the priority.\n\n"
+        "Follow this format:\nStatus: <new status>"
+    )
+    new_currently = ChatGPT_single_request(currently_prompt)
+    persona.scratch.currently = new_currently
+
+    # **MISSION PERSISTENCE CHECK**
+    daily_req_prompt = (
+        f"{persona.scratch.get_str_iss()}\n"
+        f"Today is {persona.scratch.curr_time.strftime('%A %B %d')}. {p_name} must complete the search and rescue mission. "
+        "Ensure no distractions. If previous objectives were unfinished, those take priority.\n\n"
+        "Follow this format (list should contain mission-critical steps only, max 4 items):\n"
+        "1. Wake up and re-evaluate mission status at <time>.\n"
+        "2. Resume search and rescue efforts at <time>.\n"
+        "3. Assess progress and adjust strategy at <time>.\n"
+        "4. Ensure mission success and report findings at <time>."
+    )
+    new_daily_req = ChatGPT_single_request(daily_req_prompt)
+    persona.scratch.daily_plan_req = new_daily_req.replace('\n', ' ')
+
+    print("DEBUG new_daily_req:", new_daily_req)
 
 def _long_term_planning(persona, new_day): 
   """
