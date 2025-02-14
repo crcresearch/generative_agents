@@ -1,19 +1,18 @@
-# generate_event_triple_v1.py
-
 from pydantic import BaseModel
 import traceback
+from typing import Any
 
 from utils import debug
-from ..common import openai_config
-from ..gpt_structure import generate_prompt, safe_generate_structured_response
+from ..common import openai_config, get_prompt_file_path
+from ..gpt_structure import safe_generate_structured_response
 from ..print_prompt import print_run_prompts
 
-# Variables:
-# !<INPUT 0>! -- Persona's full name.
-# !<INPUT 1>! -- Current action description
-# !<INPUT 2>! -- Persona's full name.
 
-template = """
+def create_prompt(prompt_input: dict[str, Any]):
+  name = prompt_input["name"]
+  action = prompt_input["action"]
+
+  prompt = f"""
 Task: Turn the input into (subject, predicate, object).
 
 Input: Sam Johnson is eating breakfast.
@@ -34,9 +33,10 @@ Output: (Percy Liang, teach, students)
 Input: Merrie Morris is running on a treadmill.
 Output: (Merrie Morris, run, treadmill)
 ---
-Input: !<INPUT 0>! is !<INPUT 1>!.
-Output: (!<INPUT 2>!,
+Input: {name} is {action}.
+Output:
 """
+  return prompt
 
 
 class EventTriple(BaseModel):
@@ -49,7 +49,10 @@ def run_gpt_prompt_event_triple(action_description, persona, verbose=False):
   def create_prompt_input(action_description, persona):
     if "(" in action_description:
       action_description = action_description.split("(")[-1].split(")")[0]
-    prompt_input = [persona.name, action_description, persona.name]
+    prompt_input = {
+      "name": persona.name,
+      "action": action_description,
+    }
     return prompt_input
 
   def __func_clean_up(gpt_response: EventTriple, prompt=""):
@@ -61,12 +64,12 @@ def run_gpt_prompt_event_triple(action_description, persona, verbose=False):
       gpt_response = __func_clean_up(gpt_response, prompt="")
       if len(gpt_response) != 2:
         return False
-    except:
+    except Exception:
       traceback.print_exc()
       return False
     return True
 
-  def get_fail_safe(persona):
+  def get_fail_safe():
     fs = ["is", "idle"]
     return fs
 
@@ -110,17 +113,17 @@ def run_gpt_prompt_event_triple(action_description, persona, verbose=False):
     "presence_penalty": 0,
     "stop": ["\n"],
   }
-  prompt_template = "persona/prompt_template/v2/generate_event_triple_v1.py"
+  prompt_file = get_prompt_file_path(__file__)
   prompt_input = create_prompt_input(action_description, persona)
-  prompt = generate_prompt(prompt_input, prompt_template_str=template)
-  fail_safe = get_fail_safe(persona)  ########
+  prompt = create_prompt(prompt_input)
+  fail_safe = get_fail_safe()
   output = safe_generate_structured_response(
     prompt, gpt_param, EventTriple, 5, fail_safe, __func_validate, __func_clean_up
   )
   output = (persona.name, output[0], output[1])
 
   if debug or verbose:
-    print_run_prompts(prompt_template, persona, gpt_param, prompt_input, prompt, output)
+    print_run_prompts(prompt_file, persona, gpt_param, prompt_input, prompt, output)
 
   return output, [output, prompt, gpt_param, prompt_input, fail_safe]
 
@@ -129,7 +132,10 @@ def run_gpt_prompt_act_obj_event_triple(
   act_game_object, act_obj_desc, persona, verbose=False
 ):
   def create_prompt_input(act_game_object, act_obj_desc):
-    prompt_input = [act_game_object, act_obj_desc, act_game_object]
+    prompt_input = {
+      "name": act_game_object,
+      "action": act_obj_desc,
+    }
     return prompt_input
 
   def __func_clean_up(gpt_response: EventTriple, prompt=""):
@@ -141,12 +147,12 @@ def run_gpt_prompt_act_obj_event_triple(
       gpt_response = __func_clean_up(gpt_response, prompt="")
       if len(gpt_response) != 2:
         return False
-    except:
+    except Exception:
       traceback.print_exc()
       return False
     return True
 
-  def get_fail_safe(act_game_object):
+  def get_fail_safe():
     fs = ["is", "idle"]
     return fs
 
@@ -160,16 +166,16 @@ def run_gpt_prompt_act_obj_event_triple(
     "presence_penalty": 0,
     "stop": ["\n"],
   }
-  prompt_template = "persona/prompt_template/v2/generate_event_triple_v1.py"
+  prompt_file = get_prompt_file_path(__file__)
   prompt_input = create_prompt_input(act_game_object, act_obj_desc)
-  prompt = generate_prompt(prompt_input, prompt_template_str=template)
-  fail_safe = get_fail_safe(act_game_object)
+  prompt = create_prompt(prompt_input)
+  fail_safe = get_fail_safe()
   output = safe_generate_structured_response(
     prompt, gpt_param, EventTriple, 5, fail_safe, __func_validate, __func_clean_up
   )
   output = (act_game_object, output[0], output[1])
 
   if debug or verbose:
-    print_run_prompts(prompt_template, persona, gpt_param, prompt_input, prompt, output)
+    print_run_prompts(prompt_file, persona, gpt_param, prompt_input, prompt, output)
 
   return output, [output, prompt, gpt_param, prompt_input, fail_safe]

@@ -1,26 +1,25 @@
-# generate_obj_event_v1.py
-
 import traceback
 from pydantic import BaseModel
+from typing import Any
 
-from ..common import openai_config
-from ..gpt_structure import generate_prompt, ChatGPT_safe_generate_structured_response
+from ..common import openai_config, get_prompt_file_path
+from ..gpt_structure import ChatGPT_safe_generate_structured_response
+from ..print_prompt import print_run_prompts
 
-# Variables:
-# !<INPUT 0>! -- Object name
-# !<INPUT 1>! -- Persona name
-# !<INPUT 2>! -- Persona action event description
-# !<INPUT 3>! -- Object name
-# !<INPUT 4>! -- Object name
+def create_prompt(prompt_input: dict[str, Any]):
+  object = prompt_input["object"]
+  persona_name = prompt_input["persona_name"]
+  persona_action = prompt_input["persona_action"]
 
-template = """
+  prompt = f"""
 Task: We want to understand the state of an object that is being used by someone.
 
 Let's think step by step.
-We want to know about !<INPUT 0>!'s state.
-Step 1. !<INPUT 1>! is !<INPUT 2>!.
-Step 2. Describe the !<INPUT 3>!'s state: !<INPUT 4>! is <fill in>
+We want to know about the state of the {object}.
+Step 1. {persona_name} is {persona_action}.
+Step 2. Describe the state of the {object}: {object} is <fill in>
 """
+  return prompt
 
 
 class ObjDesc(BaseModel):
@@ -29,13 +28,11 @@ class ObjDesc(BaseModel):
 
 def run_gpt_prompt_act_obj_desc(act_game_object, act_desp, persona, verbose=False):
   def create_prompt_input(act_game_object, act_desp, persona):
-    prompt_input = [
-      act_game_object,
-      persona.name,
-      act_desp,
-      act_game_object,
-      act_game_object,
-    ]
+    prompt_input = {
+      "object": act_game_object,
+      "persona_name": persona.name,
+      "persona_action": act_desp,
+    }
     return prompt_input
 
   # def __func_clean_up(gpt_response, prompt=""):
@@ -53,21 +50,20 @@ def run_gpt_prompt_act_obj_desc(act_game_object, act_desp, persona, verbose=Fals
     return fs
 
   # ChatGPT Plugin ===========================================================
-  def __chat_func_clean_up(gpt_response: ObjDesc, prompt=""):  ############
+  def __chat_func_clean_up(gpt_response: ObjDesc, prompt=""):
     cr = gpt_response.description.strip()
     if cr[-1] == ".":
       cr = cr[:-1]
     return cr
 
-  def __chat_func_validate(gpt_response, prompt=""):  ############
+  def __chat_func_validate(gpt_response, prompt=""):
     try:
       gpt_response = __chat_func_clean_up(gpt_response, prompt="")
-    except:
+    except Exception:
       traceback.print_exc()
       return False
     return True
 
-  print("DEBUG 6")  ########
   gpt_param = {
     "engine": openai_config["model"],
     "max_tokens": 200,
@@ -78,11 +74,12 @@ def run_gpt_prompt_act_obj_desc(act_game_object, act_desp, persona, verbose=Fals
     "presence_penalty": 0,
     "stop": None,
   }
-  prompt_input = create_prompt_input(act_game_object, act_desp, persona)  ########
-  prompt = generate_prompt(prompt_input, prompt_template_str=template)
-  example_output = "being fixed"  ########
-  special_instruction = "The output should ONLY contain the phrase that should go in <fill in>. It should be 15 tokens or less."  ########
-  fail_safe = get_fail_safe(act_game_object)  ########
+  prompt_file = get_prompt_file_path(__file__)
+  prompt_input = create_prompt_input(act_game_object, act_desp, persona)
+  prompt = create_prompt(prompt_input)
+  example_output = "being fixed"
+  special_instruction = "The output should ONLY contain the phrase that should go in <fill in>. It should be 15 tokens or less."
+  fail_safe = get_fail_safe(act_game_object)
   output = ChatGPT_safe_generate_structured_response(
     prompt,
     ObjDesc,
@@ -95,9 +92,11 @@ def run_gpt_prompt_act_obj_desc(act_game_object, act_desp, persona, verbose=Fals
     True,
   )
 
-  if output != False:
-    return output, [output, prompt, gpt_param, prompt_input, fail_safe]
+  if verbose:
+    print_run_prompts(prompt_file, persona, gpt_param, prompt_input, prompt, output)
 
+  if output:
+    return output, [output, prompt, gpt_param, prompt_input, fail_safe]
   # ChatGPT Plugin ===========================================================
 
   # gpt_param = {"engine": openai_config["model"], "max_tokens": 30,

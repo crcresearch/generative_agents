@@ -1,39 +1,36 @@
-# new_decomp_schedule_v1.py
-
 import datetime
 from pydantic import BaseModel
 import traceback
+from typing import Any
 
 from utils import debug
-from ..common import openai_config
-from ..gpt_structure import generate_prompt, safe_generate_structured_response
+from ..common import openai_config, get_prompt_file_path
+from ..gpt_structure import safe_generate_structured_response
 from ..print_prompt import print_run_prompts
 
-# Variables:
-# !<INPUT 0>! -- persona name
-# !<INPUT 1>! -- start hour
-# !<INPUT 2>! -- end hour
-# !<INPUT 3>! -- original plan
-# !<INPUT 4>! -- persona name
-# !<INPUT 5>! -- new event
-# !<INPUT 6>! -- new event duration
-# !<INPUT 7>! -- persona name
-# !<INPUT 8>! -- start hour
-# !<INPUT 9>! -- end hour
-# !<INPUT 10>! -- end hour
-# !<INPUT 11>! -- new schedule init
 
-template = """
-Here was !<INPUT 0>!'s originally planned schedule from !<INPUT 1>! to !<INPUT 2>!.
-!<INPUT 3>!
+def create_prompt(prompt_input: dict[str, Any]):
+  persona_name = prompt_input["persona_name"]
+  start_hour = prompt_input["start_hour"]
+  end_hour = prompt_input["end_hour"]
+  original_plan = prompt_input["original_plan"]
+  new_action = prompt_input["new_action"]
+  new_action_duration = prompt_input["new_action_duration"]
+  new_schedule_start = prompt_input["new_schedule_start"]
 
-But !<INPUT 4>! unexpectedly ended up !<INPUT 5>! for !<INPUT 6>! minutes. Revise !<INPUT 7>!'s schedule from !<INPUT 8>! to !<INPUT 9>! accordingly (it has to end by !<INPUT 10>!).
-The revised schedule:
-!<INPUT 11>!
+  prompt = f"""
+Activity format:
+start_time ~ end_time -- main_task (subtask)
 
-The above activities are formatted like:
-[start_time] ~ [end_time] -- [main_task] ([subtask])
+Here was {persona_name}'s originally planned schedule from {start_hour} to {end_hour}:
+{original_plan}
+
+But {persona_name} unexpectedly ended up {new_action} for {new_action_duration} minutes. Revise {persona_name}'s schedule from {start_hour} to {end_hour} accordingly (it has to end by {end_hour}). Use present progressive tense (e.g., "working on the lesson plan").
+
+Revised schedule:
+{new_schedule_start}
 """
+  return prompt
 
 
 class NewActivity(BaseModel):
@@ -97,20 +94,15 @@ def run_gpt_prompt_new_decomp_schedule(
       "%H:%M"
     ) + " ~"
 
-    prompt_input = [
-      persona_name,
-      start_hour_str,
-      end_hour_str,
-      original_plan,
-      persona_name,
-      inserted_act,
-      inserted_act_dur,
-      persona_name,
-      start_hour_str,
-      end_hour_str,
-      end_hour_str,
-      new_plan_init,
-    ]
+    prompt_input = {
+      "persona_name": persona_name,
+      "start_hour": start_hour_str,
+      "end_hour": end_hour_str,
+      "original_plan": original_plan,
+      "new_action": inserted_act,
+      "new_action_duration": inserted_act_dur,
+      "new_schedule_start": new_plan_init,
+    }
     return prompt_input
 
   def __func_clean_up(gpt_response: NewSchedule, prompt=""):
@@ -140,23 +132,31 @@ def run_gpt_prompt_new_decomp_schedule(
           return False
         if str(type(dur)) != "<class 'int'>":
           return False
-      x = (
-        prompt.split("\n")[0].split("originally planned schedule from")[-1].strip()[:-1]
+
+      time_range_str = (
+        prompt.split(" originally planned schedule from ")[1]
+        .split("\n")[0]
+        .strip()
+        .strip(":")
+        .strip()
       )
-      x = [datetime.datetime.strptime(i.strip(), "%H:%M %p") for i in x.split(" to ")]
-      delta_min = int((x[1] - x[0]).total_seconds() / 60)
+      time_range = [
+        datetime.datetime.strptime(time_str.strip(), "%H:%M %p")
+        for time_str in time_range_str.split(" to ")
+      ]
+      delta_min = int((time_range[1] - time_range[0]).total_seconds() / 60)
 
       if int(dur_sum) != int(delta_min):
         return False
 
-    except:
+    except Exception:
       traceback.print_exc()
       return False
     return True
 
   def get_fail_safe(main_act_dur, truncated_act_dur):
     dur_sum = 0
-    for act, dur in main_act_dur:
+    for _act, dur in main_act_dur:
       dur_sum += dur
 
     ret = truncated_act_dur[:]
@@ -166,7 +166,7 @@ def run_gpt_prompt_new_decomp_schedule(
     ret_dur_sum = 0
     count = 0
     over = None
-    for act, dur in ret:
+    for _act, dur in ret:
       ret_dur_sum += dur
       if ret_dur_sum == dur_sum:
         break
@@ -191,7 +191,7 @@ def run_gpt_prompt_new_decomp_schedule(
     "presence_penalty": 0,
     "stop": None,
   }
-  prompt_template = "persona/prompt_template/v2/new_decomp_schedule_v1.py"
+  prompt_file = get_prompt_file_path(__file__)
   prompt_input = create_prompt_input(
     persona,
     main_act_dur,
@@ -202,18 +202,13 @@ def run_gpt_prompt_new_decomp_schedule(
     inserted_act_dur,
     test_input,
   )
-  prompt = generate_prompt(prompt_input, prompt_template_str=template)
+  prompt = create_prompt(prompt_input)
   fail_safe = get_fail_safe(main_act_dur, truncated_act_dur)
   output = safe_generate_structured_response(
     prompt, gpt_param, NewSchedule, 5, fail_safe, __func_validate, __func_clean_up
   )
 
-  # print ("* * * * output")
-  # print (output)
-  # print ('* * * * fail_safe')
-  # print (fail_safe)
-
   if debug or verbose:
-    print_run_prompts(prompt_template, persona, gpt_param, prompt_input, prompt, output)
+    print_run_prompts(prompt_file, persona, gpt_param, prompt_input, prompt, output)
 
   return output, [output, prompt, gpt_param, prompt_input, fail_safe]

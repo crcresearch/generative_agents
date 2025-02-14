@@ -1,24 +1,22 @@
-# task_decomp_v3.py
-
 from pydantic import BaseModel
 import traceback
 import datetime
+from typing import Any
 
-from ..common import openai_config
-from ..gpt_structure import generate_prompt, safe_generate_structured_response
+from ..common import openai_config, get_prompt_file_path
+from ..gpt_structure import safe_generate_structured_response
 from ..print_prompt import print_run_prompts
 
-# Variables:
-# !<INPUT 0>! -- Commonset
-# !<INPUT 1>! -- Surrounding schedule description
-# !<INPUT 2>! -- Persona first name
-# !<INPUT 3>! -- Persona first name
-# !<INPUT 4>! -- Current action
-# !<INPUT 5>! -- curr time range
-# !<INPUT 6>! -- Current action duration in min
-# !<INPUT 7>! -- Persona first names
 
-template = """
+def create_prompt(prompt_input: dict[str, Any]):
+  identity_stable_set = prompt_input["identity_stable_set"]
+  broad_schedule_summary = prompt_input["broad_schedule_summary"]
+  persona_firstname = prompt_input["persona_firstname"]
+  action = prompt_input["action"]
+  action_duration = prompt_input["action_duration"]
+  action_time_range = prompt_input["action_time_range"]
+
+  prompt = f"""
 Describe subtasks in 5 min increments.
 
 --- Example ---
@@ -26,7 +24,7 @@ Name: Kelly Bronson
 Age: 35
 Backstory: Kelly always wanted to be a teacher, and now she teaches kindergarten. During the week, she dedicates herself to her students, but on the weekends, she likes to try out new restaurants and hang out with friends. She is very warm and friendly, and loves caring for others.
 Personality: sweet, gentle, meticulous
-Location: Kelly is in an older condo that has the following areas: {kitchen, bedroom, dining, porch, office, bathroom, living room, hallway}.
+Location: Kelly is in an older condo that has the following areas: [kitchen, bedroom, dining, porch, office, bathroom, living room, hallway].
 Currently: Kelly is a teacher during the school year. She teaches at the school but works on lesson plans at home. She is currently living alone in a single bedroom condo.
 Daily plan requirement: Kelly is planning to teach during the morning and work from home in the afternoon.
 
@@ -42,11 +40,11 @@ In 5 min increments, list the subtasks Kelly does when Kelly is working on the n
 8) Kelly is printing the lesson plan. (duration in minutes: 10, minutes left: 5)
 9) Kelly is putting the lesson plan in her bag. (duration in minutes: 5, minutes left: 0)
 ---
-!<INPUT 0>!
-!<INPUT 1>!
-In 5 min increments, list the subtasks !<INPUT 2>! does when !<INPUT 3>! is !<INPUT 4>! from !<INPUT 5>! (total duration in minutes !<INPUT 6>!):
-1) !<INPUT 7>! is
+{identity_stable_set}
+{broad_schedule_summary}
+In 5 min increments, list the subtasks {persona_firstname} does when {persona_firstname} is {action} from {action_time_range} (total duration in minutes: {action_duration}). Use present progressive tense (e.g., "printing the lesson plan").
 """
+  return prompt
 
 
 class Subtask(BaseModel):
@@ -60,14 +58,13 @@ class TaskDecomposition(BaseModel):
 
 
 def run_gpt_prompt_task_decomp(persona, task, duration, test_input=None, verbose=False):
-  def create_prompt_input(persona, task, duration, test_input=None):
+  def create_prompt_input(persona, task, duration, test_input=None, debug=False):
     """
     Today is Saturday June 25. From 00:00 ~ 06:00am, Maeve is
     planning on sleeping, 06:00 ~ 07:00am, Maeve is
     planning on waking up and doing her morning routine,
     and from 07:00am ~08:00am, Maeve is planning on having breakfast.
     """
-
     curr_f_org_index = persona.scratch.get_f_daily_schedule_hourly_org_index()
     all_indices = []
     # if curr_f_org_index > 0:
@@ -80,14 +77,17 @@ def run_gpt_prompt_task_decomp(persona, task, duration, test_input=None, verbose
 
     curr_time_range = ""
 
-    print("DEBUG")
-    print(persona.scratch.f_daily_schedule_hourly_org)
-    print(all_indices)
+    if debug:
+      print("DEBUG")
+      print(persona.scratch.f_daily_schedule_hourly_org)
+      print(all_indices)
 
-    summ_str = f"Today is {persona.scratch.curr_time.strftime('%B %d, %Y')}. "
-    summ_str += "From "
+    summary_str = f"Today is {persona.scratch.curr_time.strftime('%B %d, %Y')}. "
+    summary_str += "From "
     for index in all_indices:
-      print("index", index)
+      if debug:
+        print("index", index)
+
       if index < len(persona.scratch.f_daily_schedule_hourly_org):
         start_min = 0
         for i in range(index):
@@ -101,26 +101,24 @@ def run_gpt_prompt_task_decomp(persona, task, duration, test_input=None, verbose
         ) + datetime.timedelta(minutes=end_min)
         start_time_str = start_time.strftime("%H:%M%p")
         end_time_str = end_time.strftime("%H:%M%p")
-        summ_str += f"{start_time_str} ~ {end_time_str}, {persona.name} is planning on {persona.scratch.f_daily_schedule_hourly_org[index][0]}, "
+        summary_str += f"{start_time_str} ~ {end_time_str}, {persona.name} is planning on {persona.scratch.f_daily_schedule_hourly_org[index][0]}, "
         if curr_f_org_index + 1 == index:
           curr_time_range = f"{start_time_str} ~ {end_time_str}"
-    summ_str = summ_str[:-2] + "."
+    summary_str = summary_str[:-2] + "."
 
-    prompt_input = []
-    prompt_input += [persona.scratch.get_str_iss()]
-    prompt_input += [summ_str]
-    # prompt_input += [persona.scratch.get_str_curr_date_str()]
-    prompt_input += [persona.scratch.get_str_firstname()]
-    prompt_input += [persona.scratch.get_str_firstname()]
-    prompt_input += [task]
-    prompt_input += [curr_time_range]
-    prompt_input += [duration]
-    prompt_input += [persona.scratch.get_str_firstname()]
+    prompt_input = {
+      "identity_stable_set": persona.scratch.get_str_iss(),
+      "broad_schedule_summary": summary_str,
+      "persona_firstname": persona.scratch.get_str_firstname(),
+      "action": task,
+      "action_duration": duration,
+      "action_time_range": curr_time_range,
+    }
     return prompt_input
 
-  def __func_clean_up(gpt_response: TaskDecomposition, prompt=""):
-    debug = True
-
+  def __func_clean_up(
+    gpt_response: TaskDecomposition, prompt="", debug=False
+  ) -> list[list]:
     if debug:
       print(gpt_response)
       print("-==- -==- -==- ")
@@ -135,8 +133,8 @@ def run_gpt_prompt_task_decomp(persona, task, duration, test_input=None, verbose
       if task[1] == ")":
         task = task[2:].strip()
       # Get rid of "Isabella is " at start of string if it exists
-      if task.startswith(persona.scratch.get_str_firstname()):
-        task = " is ".join(task.split(" is ")[1:])
+      task = task.removeprefix(persona.scratch.get_str_firstname()).strip()
+      task = task.removeprefix("is").strip()
 
       final_task_list += [[task, subtask.duration]]
 
@@ -144,9 +142,7 @@ def run_gpt_prompt_task_decomp(persona, task, duration, test_input=None, verbose
       print("(cleanup func) Unpacked (final_task_list)): ", final_task_list)
       print("(cleanup func) Prompt:", prompt)
 
-    total_expected_min = int(
-      prompt.split("(total duration in minutes")[-1].split("):")[0].strip()
-    )
+    total_expected_min = int(duration)
 
     if debug:
       print("(cleanup func) Expected Minutes:", total_expected_min)
@@ -163,7 +159,7 @@ def run_gpt_prompt_task_decomp(persona, task, duration, test_input=None, verbose
       i_duration -= i_duration % 5
       if i_duration > 0:
         for _j in range(i_duration):
-          curr_min_slot += [(i_task, count)]
+          curr_min_slot += [[i_task, count]]
     curr_min_slot = curr_min_slot[1:]
 
     if len(curr_min_slot) > total_expected_min:
@@ -197,7 +193,7 @@ def run_gpt_prompt_task_decomp(persona, task, duration, test_input=None, verbose
     return gpt_response
 
   def get_fail_safe():
-    fs = ["idle", 5]
+    fs = [["idle", 5]]
     return fs
 
   gpt_param = {
@@ -210,9 +206,9 @@ def run_gpt_prompt_task_decomp(persona, task, duration, test_input=None, verbose
     "presence_penalty": 0,
     "stop": None,
   }
-  prompt_template = "persona/prompt_template/v2/task_decomp_v3.py"
+  prompt_file = get_prompt_file_path(__file__)
   prompt_input = create_prompt_input(persona, task, duration)
-  prompt = generate_prompt(prompt_input, prompt_template_str=template)
+  prompt = create_prompt(prompt_input)
   fail_safe = get_fail_safe()
 
   output = safe_generate_structured_response(
@@ -220,27 +216,29 @@ def run_gpt_prompt_task_decomp(persona, task, duration, test_input=None, verbose
     gpt_param,
     TaskDecomposition,
     5,
-    get_fail_safe(),
+    fail_safe,
     __func_validate,
     __func_clean_up,
   )
 
-  # print ("DEBUG")
-  # print("PROMPT:")
-  # print (prompt)
-  # print("\nOUTPUT:")
-  # print (output)
+  if verbose:
+    print("DEBUG")
+    print("PROMPT:")
+    print(prompt)
+    print("\nOUTPUT:")
+    print(output)
 
   fin_output = []
   time_sum = 0
   for i_task, i_duration in output:
-    time_sum += i_duration
+    time_sum += int(i_duration)
 
     # if time_sum < duration:
     if time_sum <= duration:
       fin_output += [[i_task, i_duration]]
     else:
       break
+
   ftime_sum = 0
   for _fi_task, fi_duration in fin_output:
     ftime_sum += fi_duration
@@ -255,6 +253,6 @@ def run_gpt_prompt_task_decomp(persona, task, duration, test_input=None, verbose
   output = ret
 
   if verbose:
-    print_run_prompts(prompt_template, persona, gpt_param, prompt_input, prompt, output)
+    print_run_prompts(prompt_file, persona, gpt_param, prompt_input, prompt, output)
 
   return output, [output, prompt, gpt_param, prompt_input, fail_safe]

@@ -1,49 +1,47 @@
-# iterative_convo_v1.py
-
 import traceback
 from pydantic import BaseModel
+from typing import Any
 
-from ..common import openai_config
-from ..gpt_structure import generate_prompt, ChatGPT_safe_generate_structured_response
-
-# Variables:
-# !<INPUT 0>! -- persona ISS
-# !<INPUT 1>! -- persona name
-# !<INPUT 2>! -- retrieved memory
-# !<INPUT 3>! -- past context
-# !<INPUT 4>! -- current location
-# !<INPUT 5>! -- current context
-# !<INPUT 6>! -- persona name
-# !<INPUT 7>! -- target persona name
-# !<INPUT 8>! -- curr convo
-# !<INPUT 9>! -- persona name
-# !<INPUT 10>! -- target persona name
+from ..common import openai_config, get_prompt_file_path
+from ..gpt_structure import ChatGPT_safe_generate_structured_response
+from ..print_prompt import print_run_prompts
 
 
-template = """
+def create_prompt(prompt_input: dict[str, Any]):
+  identity_stable_set = prompt_input["identity_stable_set"]
+  init_persona_name = prompt_input["init_persona_name"]
+  retrieved_memories = prompt_input["retrieved_memories"]
+  prev_conversation = prompt_input["prev_conversation"]
+  curr_location = prompt_input["curr_location"]
+  curr_situation = prompt_input["curr_situation"]
+  target_persona_name = prompt_input["target_persona_name"]
+  curr_conversation = prompt_input["curr_conversation"]
+
+  prompt = f"""
 Context for the task:
 
 PART 1.
-!<INPUT 0>!
+{identity_stable_set}
 
-Here is the memory that is in !<INPUT 1>!'s head:
-!<INPUT 2>!
+Here are the memories in {init_persona_name}'s mind:
+{retrieved_memories}
 
 PART 2.
 Past Context:
-!<INPUT 3>!
+{prev_conversation}
 
-Current Location: !<INPUT 4>!
+Current Location: {curr_location}
 
 Current Context:
-!<INPUT 5>!
+{curr_situation}
 
-!<INPUT 6>! and !<INPUT 7>! are chatting. Here is their conversation so far:
-!<INPUT 8>!
+{init_persona_name} and {target_persona_name} are chatting. Here is their conversation so far:
+{curr_conversation}
 
 ---
-Task: Given the above, what should !<INPUT 9>! say to !<INPUT 10>! next in the conversation? And did it end the conversation?
+Task: Given the above, what should {init_persona_name} say to {target_persona_name} next in the conversation? And will it end the conversation?
 """
+  return prompt
 
 
 class ChatUtterance(BaseModel):
@@ -108,20 +106,18 @@ def run_gpt_generate_iterative_chat_utt(
     if convo_str == "":
       convo_str = "[The conversation has not started yet -- start it!]"
 
-    init_iss = f"Here is Here is a brief description of {init_persona.scratch.name}.\n{init_persona.scratch.get_str_iss()}"
-    prompt_input = [
-      init_iss,
-      init_persona.scratch.name,
-      retrieved_str,
-      prev_convo_insert,
-      curr_location,
-      curr_context,
-      init_persona.scratch.name,
-      target_persona.scratch.name,
-      convo_str,
-      init_persona.scratch.name,
-      target_persona.scratch.name,
-    ]
+    init_iss = f"Here is a brief description of {init_persona.scratch.name}.\n{init_persona.scratch.get_str_iss()}"
+
+    prompt_input = {
+      "identity_stable_set": init_iss,
+      "init_persona_name": init_persona.scratch.name,
+      "retrieved_memories": retrieved_str,
+      "prev_conversation": prev_convo_insert,
+      "curr_location": curr_location,
+      "curr_situation": curr_context,
+      "target_persona_name": target_persona.scratch.name,
+      "curr_conversation": convo_str,
+    }
     return prompt_input
 
   def __chat_func_clean_up(gpt_response: ChatUtterance, prompt=""):
@@ -136,7 +132,7 @@ def run_gpt_generate_iterative_chat_utt(
       if not isinstance(gpt_response, ChatUtterance):
         return False
       return True
-    except:
+    except Exception:
       traceback.print_exc()
       return False
 
@@ -147,13 +143,11 @@ def run_gpt_generate_iterative_chat_utt(
     }
     return cleaned_dict
 
-  print("11")
+  prompt_file = get_prompt_file_path(__file__)
   prompt_input = create_prompt_input(
     maze, init_persona, target_persona, retrieved, curr_context, curr_chat
   )
-  print("22")
-  prompt = generate_prompt(prompt_input, prompt_template_str=template)
-  print(prompt)
+  prompt = create_prompt(prompt_input)
   fail_safe = get_fail_safe()
   output = ChatGPT_safe_generate_structured_response(
     prompt,
@@ -164,7 +158,6 @@ def run_gpt_generate_iterative_chat_utt(
     func_clean_up=__chat_func_clean_up,
     verbose=verbose,
   )
-  print(output)
 
   gpt_param = {
     "engine": openai_config["model"],
@@ -176,5 +169,10 @@ def run_gpt_generate_iterative_chat_utt(
     "presence_penalty": 0,
     "stop": None,
   }
+
+  if verbose:
+    print_run_prompts(
+      prompt_file, init_persona, gpt_param, prompt_input, prompt, output
+    )
 
   return output, [output, prompt, gpt_param, prompt_input, fail_safe]

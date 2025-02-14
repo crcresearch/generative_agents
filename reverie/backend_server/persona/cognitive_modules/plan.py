@@ -6,7 +6,8 @@ Description: This defines the "Plan" module for generative agents.
 """
 import datetime
 import math
-import random 
+import random
+import traceback
 
 import sys
 sys.path.append('../../')
@@ -109,7 +110,7 @@ def generate_hourly_schedule(persona, wake_up_hour):
   if debug:
     print("GNS FUNCTION: <generate_hourly_schedule>")
 
-  hour_str = [
+  hour_strings = [
     "00:00 AM",
     "01:00 AM",
     "02:00 AM",
@@ -149,15 +150,15 @@ def generate_hourly_schedule(persona, wake_up_hour):
     if len(n_m1_activity_set) < 5:
       n_m1_activity = []
 
-      if not all_in_one:
-        for count, curr_hour_str in enumerate(hour_str):
-          n_m1_activity += [run_gpt_prompt_generate_hourly_schedule(
-            persona, curr_hour_str, n_m1_activity, hour_str, all_in_one=False
-          )[0]]
-      else:
+      if all_in_one:
         n_m1_activity = run_gpt_prompt_generate_hourly_schedule(
-          persona, hour_str, n_m1_activity, hour_str, all_in_one=True
+          persona, n_m1_activity, hour_strings, all_in_one=True
         )[0]
+      else:
+        for _i in range(len(hour_strings)):
+          n_m1_activity += [run_gpt_prompt_generate_hourly_schedule(
+            persona, n_m1_activity, hour_strings, all_in_one=False
+          )[0]]
 
   # Step 1. Compressing the hourly schedule to the following format:
   # The integer indicates the number of hours. They should add up to 24.
@@ -251,7 +252,7 @@ def generate_action_arena(act_desp, persona, maze, act_world, act_sector):
   """
   if debug:
     print("GNS FUNCTION: <generate_action_arena>")
-  return run_gpt_prompt_action_arena(act_desp, persona, maze, act_world, act_sector)[
+  return run_gpt_prompt_action_arena(act_desp, persona, act_world, act_sector)[
     0
   ]
 
@@ -279,7 +280,7 @@ def generate_action_game_object(act_desp, act_address, persona, maze):
     print("ERROR: act_address not valid. Returning '<random>' as game object.")
     print("act_address:", act_address)
     return "<random>"
-  return run_gpt_prompt_action_game_object(act_desp, persona, maze, act_address)[0]
+  return run_gpt_prompt_action_game_object(act_desp, persona, act_address)[0]
 
 
 def generate_action_pronunciatio(act_desp, persona):
@@ -302,13 +303,14 @@ def generate_action_pronunciatio(act_desp, persona):
   try:
     response = run_gpt_prompt_pronunciatio(act_desp, persona)
     if response:
-      x = response[0]
-  except:
-    x = "🙂"
+      emoji = response[0]
+  except Exception:
+    traceback.print_exc()
+    emoji = "🙂"
 
-  if not x:
-    return "🙂"
-  return x
+  if emoji:
+    return emoji
+  return "🙂"
 
 
 def generate_action_event_triple(act_desp, persona):
@@ -374,7 +376,7 @@ def generate_convo_summary(persona, convo):
     convo_summary = response[0]
     return convo_summary
   else:
-    print("ERROR: <generate_convo_summary>")
+    print("ERROR <generate_convo_summary>: Failed to generate convo summary.")
     return ""
 
 
@@ -396,11 +398,10 @@ def generate_decide_to_react(init_persona, target_persona, retrieved):
 
 def generate_new_decomp_schedule(persona, inserted_act, inserted_act_dur,  start_hour, end_hour): 
   # Step 1: Setting up the core variables for the function. 
-  # <p> is the persona whose schedule we are editing right now. 
-  p = persona
+
   # <today_min_pass> indicates the number of minutes that have passed today. 
-  today_min_pass = (int(p.scratch.curr_time.hour) * 60 
-                    + int(p.scratch.curr_time.minute) + 1)
+  today_min_pass = (int(persona.scratch.curr_time.hour) * 60 
+                    + int(persona.scratch.curr_time.minute) + 1)
   
   # Step 2: We need to create <main_act_dur> and <truncated_act_dur>. 
   # These are basically a sub-component of <f_daily_schedule> of the persona,
@@ -434,8 +435,7 @@ def generate_new_decomp_schedule(persona, inserted_act, inserted_act_dur,  start
   count = 0 # enumerate count
   truncated_fin = False 
 
-  print ("DEBUG::: ", persona.scratch.name)
-  for act, dur in p.scratch.f_daily_schedule: 
+  for act, dur in persona.scratch.f_daily_schedule:
     if (dur_sum >= start_hour * 60) and (dur_sum < end_hour * 60): 
       main_act_dur += [[act, dur]]
       if dur_sum <= today_min_pass:
@@ -443,24 +443,20 @@ def generate_new_decomp_schedule(persona, inserted_act, inserted_act_dur,  start
       elif dur_sum > today_min_pass and not truncated_fin: 
         # We need to insert that last act, duration list like this one: 
         # e.g., ['wakes up and completes her morning routine (wakes up...)', 2]
-        truncated_act_dur += [[p.scratch.f_daily_schedule[count][0], 
+        truncated_act_dur += [[persona.scratch.f_daily_schedule[count][0], 
                                dur_sum - today_min_pass]] 
         truncated_act_dur[-1][-1] -= (dur_sum - today_min_pass) ######## DEC 7 DEBUG;.. is the +1 the right thing to do??? 
         # truncated_act_dur[-1][-1] -= (dur_sum - today_min_pass + 1) ######## DEC 7 DEBUG;.. is the +1 the right thing to do??? 
-        print ("DEBUG::: ", truncated_act_dur)
 
         # truncated_act_dur[-1][-1] -= (dur_sum - today_min_pass) ######## DEC 7 DEBUG;.. is the +1 the right thing to do??? 
         truncated_fin = True
     dur_sum += dur
     count += 1
 
-  persona_name = persona.name 
-  main_act_dur = main_act_dur
-
   x = truncated_act_dur[-1][0].split("(")[0].strip() + " (on the way to " + truncated_act_dur[-1][0].split("(")[-1][:-1] + ")"
-  truncated_act_dur[-1][0] = x 
+  truncated_act_dur[-1][0] = x
 
-  if "(" in truncated_act_dur[-1][0]: 
+  if "(" in truncated_act_dur[-1][0]:
     inserted_act = truncated_act_dur[-1][0].split("(")[0].strip() + " (" + inserted_act + ")"
 
   # To do inserted_act_dur+1 below is an important decision but I'm not sure
@@ -472,14 +468,18 @@ def generate_new_decomp_schedule(persona, inserted_act, inserted_act_dur,  start
   end_time_hour = (datetime.datetime(2022, 10, 31, 0, 0) 
                    + datetime.timedelta(hours=end_hour))
 
-  if debug: print ("GNS FUNCTION: <generate_new_decomp_schedule>")
-  return run_gpt_prompt_new_decomp_schedule(persona, 
-                                            main_act_dur, 
-                                            truncated_act_dur, 
-                                            start_time_hour,
-                                            end_time_hour,
-                                            inserted_act,
-                                            inserted_act_dur)[0]
+  if debug:
+    print ("GNS FUNCTION: <generate_new_decomp_schedule>")
+
+  return run_gpt_prompt_new_decomp_schedule(
+    persona,
+    main_act_dur,
+    truncated_act_dur,
+    start_time_hour,
+    end_time_hour,
+    inserted_act,
+    inserted_act_dur
+  )[0]
 
 
 ##############################################################################
@@ -1008,7 +1008,7 @@ def _chat_react(maze, persona, focused_event, reaction_mode, personas):
   target_persona = personas[reaction_mode[9:].strip()]
   # curr_personas = [init_persona, target_persona]
 
-  # Actually creating the conversation here. 
+  # Actually creating the conversation here.
   convo, duration_min = generate_convo(maze, init_persona, target_persona)
   convo_summary = generate_convo_summary(init_persona, convo)
   inserted_act = convo_summary

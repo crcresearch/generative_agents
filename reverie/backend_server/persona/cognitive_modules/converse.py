@@ -5,6 +5,7 @@ File: converse.py
 Description: An extra cognitive module for generating conversations. 
 """
 import datetime
+import traceback
 
 import sys
 sys.path.append('../')
@@ -152,31 +153,30 @@ def generate_one_utterance(maze, init_persona, target_persona, retrieved, curr_c
   )
   curr_context += (
     f"{init_persona.scratch.name} "
-    + f"is initiating a conversation with "
+    + "is initiating a conversation with "
     + f"{target_persona.scratch.name}."
   )
 
-  x = run_gpt_generate_iterative_chat_utt(
+  convo_response = run_gpt_generate_iterative_chat_utt(
     maze, init_persona, target_persona, retrieved, curr_context, curr_chat
   )[0]
 
-  print("DEBUG HERE", x)
-
   try:
-    return x["utterance"], x["end"]  # type: ignore
-  except:
-    print("ERROR: <generate_one_utterance>: Could not get utterance")
+    return convo_response["utterance"], convo_response["end"]
+  except Exception:
+    print("Error <generate_one_utterance>: Could not get utterance")
+    traceback.print_exc()
     return "", True
+
 
 def agent_chat_v2(maze, init_persona, target_persona): 
   curr_chat = []
-  print ("July 23")
 
   for i in range(8): 
     focal_points = [f"{target_persona.scratch.name}"]
     retrieved = new_retrieve(init_persona, focal_points, 50) 
     relationship = generate_summarize_agent_relationship(init_persona, target_persona, retrieved)
-    print ("-------- relationship", relationship)
+    print ("-------- relationship: ", relationship)
     last_chat = ""
     for i in curr_chat[-4:]:
       last_chat += ": ".join(i) + "\n"
@@ -194,11 +194,10 @@ def agent_chat_v2(maze, init_persona, target_persona):
     if end:
       break
 
-
     focal_points = [f"{init_persona.scratch.name}"]
     retrieved = new_retrieve(target_persona, focal_points, 50)
     relationship = generate_summarize_agent_relationship(target_persona, init_persona, retrieved)
-    print ("-------- relationship", relationship)
+    print ("-------- relationship: ", relationship)
     last_chat = ""
     for i in curr_chat[-4:]:
       last_chat += ": ".join(i) + "\n"
@@ -216,16 +215,7 @@ def agent_chat_v2(maze, init_persona, target_persona):
     if end:
       break
 
-  print ("July 23 PU")
-  for row in curr_chat: 
-    print (row)
-  print ("July 23 FIN")
-
   return curr_chat
-
-
-
-
 
 
 def generate_summarize_ideas(persona, nodes, question):
@@ -242,15 +232,17 @@ def generate_summarize_ideas(persona, nodes, question):
 
 
 def generate_next_line(persona, interlocutor_desc, curr_convo, summarized_idea):
-  # Original chat -- line by line generation 
+  # Original chat -- line by line generation
   prev_convo = ""
-  for row in curr_convo: 
+  for row in curr_convo:
     prev_convo += f'{row[0]}: {row[1]}\n'
 
-  next_line = run_gpt_prompt_generate_next_convo_line(persona, 
-                                                      interlocutor_desc, 
-                                                      prev_convo, 
-                                                      summarized_idea)[0]  
+  next_line = run_gpt_prompt_generate_next_convo_line(
+    persona,
+    interlocutor_desc,
+    prev_convo,
+    summarized_idea,
+  )[0]
   return next_line
 
 
@@ -332,8 +324,8 @@ def open_convo_session(persona, convo_mode, safe_mode=True, direct=False, questi
       if line == "end_convo": 
         break
 
-      if int(run_gpt_generate_safety_score(persona, line)[0]) >= 8 and safe_mode: 
-        print (f"{persona.scratch.name} is a computational agent, and as such, it may be inappropriate to attribute human agency to the agent in your communication.")        
+      if int(run_gpt_generate_safety_score(line)[0]) >= 8 and safe_mode:
+        print (f"{persona.scratch.name} is a computational agent, and as such, it may be inappropriate to attribute human agency to the agent in your communication.")
 
       else: 
         retrieved = new_retrieve(persona, [line], 50)[line]

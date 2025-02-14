@@ -1,35 +1,35 @@
-# generate_next_convo_line_v1.py
-
 from pydantic import BaseModel
 import traceback
+from typing import Any
 
 from utils import debug
-from ..common import openai_config
-from ..gpt_structure import generate_prompt, safe_generate_structured_response
+from ..common import openai_config, get_prompt_file_path
+from ..gpt_structure import safe_generate_structured_response
 from ..print_prompt import print_run_prompts
 
-# Variables:
-# !<INPUT 0>! -- agent name
-# !<INPUT 1>! -- agent iss
-# !<INPUT 2>! -- agent name
-# !<INPUT 3>! -- interlocutor name and description
-# !<INPUT 4>! -- prev convo
-# !<INPUT 5>! -- retrieve summary
-# !<INPUT 6>! -- agent name
 
-template = """
-Here is some basic information about !<INPUT 0>!.
-!<INPUT 1>!
+def create_prompt(prompt_input: dict[str, Any]):
+  persona_name = prompt_input["persona_name"]
+  identity_stable_set = prompt_input["identity_stable_set"]
+  interlocutor_description = prompt_input["interlocutor_description"]
+  conversation = prompt_input["conversation"]
+  persona_knowledge = prompt_input["persona_knowledge"]
+
+  prompt = f"""
+Here is some basic information about {persona_name}.
+{identity_stable_set}
 
 ===
-Following is a conversation between !<INPUT 2>! and !<INPUT 3>!.
+Following is a conversation between {persona_name} and {interlocutor_description}.
 
-!<INPUT 4>!
+{conversation}
 
-(Note -- This is the only information that !<INPUT 5>! has: !<INPUT 6>!)
+(Note -- This is the only information that {persona_name} has: {persona_knowledge})
 
-!<INPUT 7>!: "
+Next line:
+{persona_name}:
 """
+  return prompt
 
 
 class NextConversationLine(BaseModel):
@@ -47,20 +47,17 @@ def run_gpt_prompt_generate_next_convo_line(
   def create_prompt_input(
     persona, interlocutor_desc, prev_convo, retrieved_summary, test_input=None
   ):
-    prompt_input = [
-      persona.scratch.name,
-      persona.scratch.get_str_iss(),
-      persona.scratch.name,
-      interlocutor_desc,
-      prev_convo,
-      persona.scratch.name,
-      retrieved_summary,
-      persona.scratch.name,
-    ]
+    prompt_input = {
+      "persona_name": persona.scratch.name,
+      "identity_stable_set": persona.scratch.get_str_iss(),
+      "interlocutor_description": interlocutor_desc,
+      "conversation": prev_convo,
+      "persona_knowledge": retrieved_summary,
+    }
     return prompt_input
 
   def __func_clean_up(gpt_response: NextConversationLine, prompt=""):
-    return gpt_response.next_conversation_line
+    return gpt_response.next_conversation_line.strip().strip('"')
 
   def __func_validate(gpt_response, prompt=""):
     try:
@@ -68,7 +65,7 @@ def run_gpt_prompt_generate_next_convo_line(
         return False
       __func_clean_up(gpt_response, prompt)
       return True
-    except:
+    except Exception:
       traceback.print_exc()
       return False
 
@@ -112,11 +109,11 @@ def run_gpt_prompt_generate_next_convo_line(
     "presence_penalty": 0,
     "stop": None,
   }
-  prompt_template = "persona/prompt_template/v2/generate_next_convo_line_v1.py"
+  prompt_file = get_prompt_file_path(__file__)
   prompt_input = create_prompt_input(
     persona, interlocutor_desc, prev_convo, retrieved_summary
   )
-  prompt = generate_prompt(prompt_input, prompt_template_str=template)
+  prompt = create_prompt(prompt_input)
 
   fail_safe = get_fail_safe()
   output = safe_generate_structured_response(
@@ -129,6 +126,6 @@ def run_gpt_prompt_generate_next_convo_line(
     __func_clean_up,
   )
   if debug or verbose:
-    print_run_prompts(prompt_template, persona, gpt_param, prompt_input, prompt, output)
+    print_run_prompts(prompt_file, persona, gpt_param, prompt_input, prompt, output)
 
   return output, [output, prompt, gpt_param, prompt_input, fail_safe]

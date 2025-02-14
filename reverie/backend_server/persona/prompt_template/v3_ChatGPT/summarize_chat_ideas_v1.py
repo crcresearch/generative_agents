@@ -1,28 +1,31 @@
-# summarize_chat_ideas_v1.py
-
 import traceback
+from typing import Any
 
-from ..common import openai_config, IdeaSummary
-from ..gpt_structure import generate_prompt, ChatGPT_safe_generate_structured_response
+from ..common import openai_config, StatementsSummary, get_prompt_file_path
+from ..gpt_structure import ChatGPT_safe_generate_structured_response
+from ..print_prompt import print_run_prompts
 
-# Variables:
-# !<INPUT 0>! -- Current date
-# !<INPUT 1>! -- curr_context
-# !<INPUT 2>! -- currently
-# !<INPUT 3>! -- Statements
-# !<INPUT 4>! -- curr persona name
-# !<INPUT 5>! -- target_persona.scratch.name
 
-template = """
-Current Date: !<INPUT 0>!
+def create_prompt(prompt_input: dict[str, Any]):
+  date = prompt_input["date"]
+  context = prompt_input["context"]
+  init_persona_currently = prompt_input["init_persona_currently"]
+  statements = prompt_input["statements"]
+  init_persona_name = prompt_input["init_persona_name"]
+  target_persona_name = prompt_input["target_persona_name"]
 
-!<INPUT 1>!
+  prompt = f"""
+Current Date: {date}
 
-Currently: !<INPUT 2>!
+{context}
 
-!<INPUT 3>!
-Summarize the most relevant statements above that can inform !<INPUT 4>! in his conversation with !<INPUT 5>!.
+Currently: {init_persona_currently}
+
+Statements: {statements}
+
+Summarize the most relevant statements above that can inform {init_persona_name} in his conversation with {target_persona_name}.
 """
+  return prompt
 
 
 def run_gpt_prompt_agent_chat_summarize_ideas(
@@ -31,14 +34,14 @@ def run_gpt_prompt_agent_chat_summarize_ideas(
   def create_prompt_input(
     persona, target_persona, statements, curr_context, test_input=None
   ):
-    prompt_input = [
-      persona.scratch.get_str_curr_date_str(),
-      curr_context,
-      persona.scratch.currently,
-      statements,
-      persona.scratch.name,
-      target_persona.scratch.name,
-    ]
+    prompt_input = {
+      "date": persona.scratch.get_str_curr_date_str(),
+      "context": curr_context,
+      "init_persona_currently": persona.scratch.currently,
+      "statements": statements,
+      "init_persona_name": persona.scratch.name,
+      "target_persona_name": target_persona.scratch.name,
+    }
     return prompt_input
 
   # def __func_clean_up(gpt_response: Idea_Summary, prompt=""):
@@ -56,19 +59,18 @@ def run_gpt_prompt_agent_chat_summarize_ideas(
     return "..."
 
   # ChatGPT Plugin ===========================================================
-  def __chat_func_clean_up(gpt_response: IdeaSummary, prompt=""):  ############
-    return gpt_response.idea_summary
+  def __chat_func_clean_up(gpt_response: StatementsSummary, prompt=""):
+    return gpt_response.statements_summary
 
-  def __chat_func_validate(gpt_response, prompt=""):  ############
+  def __chat_func_validate(gpt_response, prompt=""):
     try:
-      if not isinstance(gpt_response, IdeaSummary):
+      if not isinstance(gpt_response, StatementsSummary):
         return False
       return True
-    except:
+    except Exception:
       traceback.print_exc()
       return False
 
-  print("DEBUG 17")  ########
   gpt_param = {
     "engine": openai_config["model"],
     "max_tokens": 300,
@@ -79,20 +81,16 @@ def run_gpt_prompt_agent_chat_summarize_ideas(
     "presence_penalty": 0,
     "stop": None,
   }
-  prompt_input = create_prompt_input(
-    persona, target_persona, statements, curr_context
-  )  ########
-  prompt = generate_prompt(prompt_input, prompt_template_str=template)
-  example_output = "Jane Doe is working on a project"  ########
-  special_instruction = (
-    "The output should be a string that responds to the question."  ########
-  )
-  fail_safe = get_fail_safe()  ########
+  prompt_file = get_prompt_file_path(__file__)
+  prompt_input = create_prompt_input(persona, target_persona, statements, curr_context)
+  prompt = create_prompt(prompt_input)
+  example_output = "Jane Doe is working on a project"
+  fail_safe = get_fail_safe()
   output = ChatGPT_safe_generate_structured_response(
     prompt,
-    IdeaSummary,
+    StatementsSummary,
     example_output,
-    special_instruction,
+    "",
     3,
     fail_safe,
     __chat_func_validate,
@@ -100,9 +98,11 @@ def run_gpt_prompt_agent_chat_summarize_ideas(
     True,
   )
 
-  if output != False:
-    return output, [output, prompt, gpt_param, prompt_input, fail_safe]
+  if verbose:
+    print_run_prompts(prompt_file, persona, gpt_param, prompt_input, prompt, output)
 
+  if output:
+    return output, [output, prompt, gpt_param, prompt_input, fail_safe]
   # ChatGPT Plugin ===========================================================
 
   # gpt_param = {"engine": openai_config["model"], "max_tokens": 150,

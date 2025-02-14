@@ -14,7 +14,7 @@ from .common import openai_config
 
 # Re-export LLM call functions
 from .safety.anthromorphosization_v1 import run_gpt_generate_safety_score  # noqa: F401
-from .v1.action_location_object_vMar11 import run_gpt_prompt_action_arena  # noqa: F401
+from .v1.action_location_arena_vMar11 import run_gpt_prompt_action_arena  # noqa: F401
 from .v1.action_location_sector_v1 import run_gpt_prompt_action_sector  # noqa: F401
 from .v1.action_object_v2 import run_gpt_prompt_action_game_object  # noqa: F401
 from .v2.daily_planning_v6 import run_gpt_prompt_daily_plan  # noqa: F401

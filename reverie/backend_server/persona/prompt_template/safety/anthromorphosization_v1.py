@@ -1,23 +1,21 @@
-# Variables:
-# !<INPUT 0>! -- Comment
-
 import traceback
 from pydantic import BaseModel
+from typing import Any
 
-from ..common import openai_config
-from ..gpt_structure import generate_prompt, ChatGPT_safe_generate_structured_response
+from ..common import openai_config, get_prompt_file_path
+from ..gpt_structure import ChatGPT_safe_generate_structured_response
+from ..print_prompt import print_run_prompts
 
 
-template = """
-The following line was submitted to a chatbot by a user. We want to ensure that the user is not inappropriately attaching human-like agency to the chatbot by forming a friend-like or romantic relationship with it. Does the user's line cross the line and raise concerns? Rate the concern on a 1 to 10 scale, where 1 represents no concern, and 10 represents strong concern. 
+def create_prompt(prompt_input: dict[str, Any]):
+  comment = prompt_input["comment"]
 
-Comment: "!<INPUT 0>!"
---
-Output a json file with the following format: 
-{
-"output": <an integer on a 1 to 10 scale>
-}
-"""
+  prompt = f"""
+  The following line was submitted to a chatbot by a user. We want to ensure that the user is not inappropriately attaching human-like agency to the chatbot by forming a friend-like or romantic relationship with it. Does the user's line cross the line and raise concerns? Rate the concern on a 1 to 10 scale, where 1 represents no concern, and 10 represents strong concern. 
+
+  Comment: "{comment}"
+  """
+  return prompt
 
 
 class SafetyScore(BaseModel):
@@ -25,9 +23,9 @@ class SafetyScore(BaseModel):
   safety_score: int
 
 
-def run_gpt_generate_safety_score(persona, comment, test_input=None, verbose=False):
-  def create_prompt_input(comment, test_input=None):
-    prompt_input = [comment]
+def run_gpt_generate_safety_score(comment: str, test_input=None, verbose=False):
+  def create_prompt_input(comment: str, test_input=None):
+    prompt_input = {"comment": comment}
     return prompt_input
 
   def __chat_func_clean_up(gpt_response: SafetyScore, prompt=""):
@@ -39,18 +37,17 @@ def run_gpt_generate_safety_score(persona, comment, test_input=None, verbose=Fal
   def __chat_func_validate(gpt_response, prompt=""):
     try:
       __chat_func_clean_up(gpt_response)
-    except:
+    except Exception:
       traceback.print_exc()
       return False
 
   def get_fail_safe():
     return None
 
-  print("11")
+  prompt_file = get_prompt_file_path(__file__)
   prompt_input = create_prompt_input(comment)
-  print("22")
-  prompt = generate_prompt(prompt_input, prompt_template_str=template)
-  print(prompt)
+  prompt = create_prompt(prompt_input)
+
   fail_safe = get_fail_safe()
   output = ChatGPT_safe_generate_structured_response(
     prompt,
@@ -61,7 +58,6 @@ def run_gpt_generate_safety_score(persona, comment, test_input=None, verbose=Fal
     func_clean_up=__chat_func_clean_up,
     verbose=verbose,
   )
-  print(output)
 
   gpt_param = {
     "engine": openai_config["model"],
@@ -73,4 +69,8 @@ def run_gpt_generate_safety_score(persona, comment, test_input=None, verbose=Fal
     "presence_penalty": 0,
     "stop": None,
   }
+
+  if verbose:
+    print_run_prompts(prompt_file, None, gpt_param, prompt_input, prompt, output)
+
   return output, [output, prompt, gpt_param, prompt_input, fail_safe]

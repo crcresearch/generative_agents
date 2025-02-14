@@ -1,23 +1,24 @@
-# whisper_inner_thought_v1.py
-
 from pydantic import BaseModel
 import traceback
+from typing import Any
 
 from utils import debug
-from ..common import openai_config
-from ..gpt_structure import generate_prompt, safe_generate_structured_response
+from ..common import openai_config, get_prompt_file_path
+from ..gpt_structure import safe_generate_structured_response
 from ..print_prompt import print_run_prompts
 
-# Variables:
-# !<INPUT 0>! -- init persona name
-# !<INPUT 1>! -- whisper
 
-template = """
-Translate the following thought into a statement about !<INPUT 0>!.
+def create_prompt(prompt_input: dict[str, Any]):
+  persona_name = prompt_input["persona_name"]
+  thought = prompt_input["thought"]
 
-Thought: "!<INPUT 1>!"
+  prompt = f"""
+Translate the following thought into a statement about {persona_name}.
+
+Thought: "{thought}"
 Statement: "
 """
+  return prompt
 
 
 class InnerThought(BaseModel):
@@ -28,17 +29,20 @@ def run_gpt_prompt_generate_whisper_inner_thought(
   persona, whisper, test_input=None, verbose=False
 ):
   def create_prompt_input(persona, whisper, test_input=None):
-    prompt_input = [persona.scratch.name, whisper]
+    prompt_input = {
+      "persona_name": persona.scratch.name,
+      "thought": whisper,
+    }
     return prompt_input
 
   def __func_clean_up(gpt_response: InnerThought, prompt=""):
-    return gpt_response.thought.split('"')[0].strip()
+    return gpt_response.thought.strip().strip('"').strip()
 
   def __func_validate(gpt_response, prompt=""):
     try:
       __func_clean_up(gpt_response, prompt)
       return True
-    except:
+    except Exception:
       traceback.print_exc()
       return False
 
@@ -55,9 +59,9 @@ def run_gpt_prompt_generate_whisper_inner_thought(
     "presence_penalty": 0,
     "stop": None,
   }
-  prompt_template = "persona/prompt_template/v2/whisper_inner_thought_v1.py"
+  prompt_file = get_prompt_file_path(__file__)
   prompt_input = create_prompt_input(persona, whisper)
-  prompt = generate_prompt(prompt_input, prompt_template_str=template)
+  prompt = create_prompt(prompt_input)
 
   fail_safe = get_fail_safe()
   output = safe_generate_structured_response(
@@ -72,6 +76,6 @@ def run_gpt_prompt_generate_whisper_inner_thought(
   )
 
   if debug or verbose:
-    print_run_prompts(prompt_template, persona, gpt_param, prompt_input, prompt, output)
+    print_run_prompts(prompt_file, persona, gpt_param, prompt_input, prompt, output)
 
   return output, [output, prompt, gpt_param, prompt_input, fail_safe]

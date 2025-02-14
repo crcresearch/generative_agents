@@ -1,26 +1,27 @@
-# daily_planning_v6.py
-
 from pydantic import BaseModel
 import traceback
+from typing import Any
 
 from utils import debug
-from ..common import openai_config
-from ..gpt_structure import generate_prompt, safe_generate_structured_response
+from ..common import openai_config, get_prompt_file_path
+from ..gpt_structure import safe_generate_structured_response
 from ..print_prompt import print_run_prompts
 
-# Variables:
-# !<INPUT 0>! -- Commonset
-# !<INPUT 1>! -- Lifestyle
-# !<INPUT 2>! -- Reverie date time now
-# !<INPUT 3>! -- Persona first names
-# !<INPUT 4>! -- wake_up_hour
 
-template = """
-!<INPUT 0>!
+def create_prompt(prompt_input: dict[str, Any]):
+  identity_stable_set = prompt_input["identity_stable_set"]
+  lifestyle = prompt_input["lifestyle"]
+  curr_date = prompt_input["curr_date"]
+  persona_name = prompt_input["persona_name"]
+  wake_up_hour = prompt_input["wake_up_hour"]
 
-In general, !<INPUT 1>!
-Today is !<INPUT 2>!. Describe !<INPUT 3>!'s plan for the whole day, from morning 'til night, in broad-strokes. Include the time of the day. e.g., "wake up and complete their morning routine at !<INPUT 4>!", "have lunch at 12:00 pm", "watch TV from 7 to 8 pm".
+  prompt = f"""
+{identity_stable_set}
+
+In general, {lifestyle}
+Today is {curr_date}. Describe {persona_name}'s plan for the whole day, from morning 'til night, in broad-strokes. Include the time of the day. e.g., "wake up and complete their morning routine at {wake_up_hour}", "have lunch at 12:00 pm", "watch TV from 7 to 8 pm".
 """
+  return prompt
 
 
 class DailyPlan(BaseModel):
@@ -44,12 +45,15 @@ def run_gpt_prompt_daily_plan(persona, wake_up_hour, test_input=None, verbose=Fa
   def create_prompt_input(persona, wake_up_hour, test_input=None):
     if test_input:
       return test_input
-    prompt_input = []
-    prompt_input += [persona.scratch.get_str_iss()]
-    prompt_input += [persona.scratch.get_str_lifestyle()]
-    prompt_input += [persona.scratch.get_str_curr_date_str()]
-    prompt_input += [persona.scratch.get_str_firstname()]
-    prompt_input += [f"{str(wake_up_hour)}:00 am"]
+
+    prompt_input = {
+      "identity_stable_set": persona.scratch.get_str_iss(),
+      "lifestyle": persona.scratch.get_str_lifestyle(),
+      "curr_date": persona.scratch.get_str_curr_date_str(),
+      "persona_name": persona.scratch.get_str_firstname(),
+      "wake_up_hour": f"{str(wake_up_hour)}:00",
+    }
+
     return prompt_input
 
   def __func_clean_up(gpt_response, prompt=""):
@@ -58,7 +62,7 @@ def run_gpt_prompt_daily_plan(persona, wake_up_hour, test_input=None, verbose=Fa
   def __func_validate(gpt_response, prompt=""):
     try:
       __func_clean_up(gpt_response, prompt="")
-    except:
+    except Exception:
       traceback.print_exc()
       return False
     return True
@@ -85,9 +89,9 @@ def run_gpt_prompt_daily_plan(persona, wake_up_hour, test_input=None, verbose=Fa
     "presence_penalty": 0,
     "stop": None,
   }
-  prompt_template = "persona/prompt_template/v2/daily_planning_v6.py"
+  prompt_file = get_prompt_file_path(__file__)
   prompt_input = create_prompt_input(persona, wake_up_hour, test_input)
-  prompt = generate_prompt(prompt_input, prompt_template_str=template)
+  prompt = create_prompt(prompt_input)
   fail_safe = get_fail_safe()
 
   output = safe_generate_structured_response(
@@ -95,6 +99,6 @@ def run_gpt_prompt_daily_plan(persona, wake_up_hour, test_input=None, verbose=Fa
   )
 
   if debug or verbose:
-    print_run_prompts(prompt_template, persona, gpt_param, prompt_input, prompt, output)
+    print_run_prompts(prompt_file, persona, gpt_param, prompt_input, prompt, output)
 
   return output, [output, prompt, gpt_param, prompt_input, fail_safe]

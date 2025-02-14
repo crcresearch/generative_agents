@@ -200,7 +200,7 @@ def extract_relevance(persona, nodes, focal_pt):
   return relevance_out
 
 
-def new_retrieve(persona, focal_points, n_count=30): 
+def new_retrieve(persona, focal_points, n_count=30):
   """
   Given the current persona and focal points (focal points are events or 
   thoughts for which we are retrieving), we retrieve a set of nodes for each
@@ -219,9 +219,13 @@ def new_retrieve(persona, focal_points, n_count=30):
     persona = <persona> object 
     focal_points = ["How are you?", "Jane is swimming in the pond"]
   """
+  print("-------- new_retrieve ----------")
+  print("Number of focal_points: ", len(focal_points), flush=True)
+
   # <retrieved> is the main dictionary that we are returning
-  retrieved = dict() 
-  for focal_pt in focal_points: 
+  retrieved = dict()
+
+  for focal_pt in focal_points:
     # Getting all nodes from the agent's memory (both thoughts and events) and
     # sorting them by the datetime of creation.
     # You could also imagine getting the raw conversation, but for now. 
@@ -253,23 +257,28 @@ def new_retrieve(persona, focal_points, n_count=30):
                      + persona.scratch.importance_w*importance_out[key]*gw[2])
 
     master_out = top_highest_x_values(master_out, len(master_out.keys()))
-    for key, val in master_out.items(): 
-      print (persona.a_mem.id_to_node[key].embedding_key, val)
-      print (persona.scratch.recency_w*recency_out[key]*1, 
-             persona.scratch.relevance_w*relevance_out[key]*1, 
-             persona.scratch.importance_w*importance_out[key]*1)
+
+    print("\n-------- focal_pt: ", focal_pt, flush=True)
+    for key, val in master_out.items():
+      print("key: ", persona.a_mem.id_to_node[key].embedding_key, " val: ", val)
+      print(
+        "recency: ", persona.scratch.recency_w*recency_out[key]*1,
+        " relevance: ", persona.scratch.relevance_w*relevance_out[key]*1,
+        " importance: ", persona.scratch.importance_w*importance_out[key]*1
+      )
+    print(flush=True)
 
     # Extracting the highest x values.
     # <master_out> has the key of node.id and value of float. Once we get the 
     # highest x values, we want to translate the node.id into nodes and return
     # the list of nodes.
     master_out = top_highest_x_values(master_out, n_count)
-    master_nodes = [persona.a_mem.id_to_node[key] 
+    master_nodes = [persona.a_mem.id_to_node[key]
                     for key in list(master_out.keys())]
 
-    for n in master_nodes: 
+    for n in master_nodes:
       n.last_accessed = persona.scratch.curr_time
-      
+
     retrieved[focal_pt] = master_nodes
 
   return retrieved

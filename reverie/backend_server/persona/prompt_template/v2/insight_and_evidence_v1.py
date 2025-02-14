@@ -1,23 +1,29 @@
-# insight_and_evidence_v1.py
-
 from pydantic import BaseModel
 import traceback
+from typing import Any
 
 from utils import debug
-from ..common import openai_config
-from ..gpt_structure import generate_prompt, safe_generate_structured_response
+from ..common import openai_config, get_prompt_file_path
+from ..gpt_structure import safe_generate_structured_response
 from ..print_prompt import print_run_prompts
 
-# Variables:
-# !<INPUT 0>! -- Numbered list of event/thought statements
-# !<INPUT 1>! -- target persona name or "the conversation"
 
-template = """
+def create_prompt(prompt_input: dict[str, Any]):
+  statements = prompt_input["statements"]
+  num_insights = prompt_input["num_insights"]
+
+  prompt = f"""
 Input:
-!<INPUT 0>!
+{statements}
 
-What !<INPUT 1>! high-level insights can you infer from the above statements? (example format: insight (because of 1, 5, 3))
+What {num_insights} high-level insights can you infer from the above statements?
+Cite the statements that support each insight by number.
+(example format: {{
+  "insight": "This is a high-level insight",
+  "because_of": [1, 5, 3]
+}})
 """
+  return prompt
 
 
 class Insight(BaseModel):
@@ -30,10 +36,13 @@ class InsightGuidance(BaseModel):
 
 
 def run_gpt_prompt_insight_and_guidance(
-  persona, statements, n, test_input=None, verbose=False
+  persona, statements, num_insights, test_input=None, verbose=False
 ):
-  def create_prompt_input(persona, statements, n, test_input=None):
-    prompt_input = [statements, str(n)]
+  def create_prompt_input(statements, num_insights, test_input=None):
+    prompt_input = {
+      "statements": statements,
+      "num_insights": num_insights,
+    }
     return prompt_input
 
   def __func_clean_up(gpt_response: InsightGuidance, prompt=""):
@@ -46,11 +55,11 @@ def run_gpt_prompt_insight_and_guidance(
         return False
       __func_clean_up(gpt_response, prompt)
       return True
-    except:
+    except Exception:
       traceback.print_exc()
       return False
 
-  def get_fail_safe(n):
+  def get_fail_safe():
     return {"I am okay": [1, 2, 3]}
 
   gpt_param = {
@@ -63,16 +72,16 @@ def run_gpt_prompt_insight_and_guidance(
     "presence_penalty": 0,
     "stop": None,
   }
-  prompt_template = "persona/prompt_template/v2/insight_and_evidence_v1.py"
-  prompt_input = create_prompt_input(persona, statements, n)
-  prompt = generate_prompt(prompt_input, prompt_template_str=template)
+  prompt_file = get_prompt_file_path(__file__)
+  prompt_input = create_prompt_input(statements, num_insights)
+  prompt = create_prompt(prompt_input)
 
-  fail_safe = get_fail_safe(n)
+  fail_safe = get_fail_safe()
   output = safe_generate_structured_response(
     prompt, gpt_param, InsightGuidance, 5, fail_safe, __func_validate, __func_clean_up
   )
 
   if debug or verbose:
-    print_run_prompts(prompt_template, persona, gpt_param, prompt_input, prompt, output)
+    print_run_prompts(prompt_file, persona, gpt_param, prompt_input, prompt, output)
 
   return output, [output, prompt, gpt_param, prompt_input, fail_safe]
