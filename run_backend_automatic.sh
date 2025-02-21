@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
-
+echo "${CONDA_PATH}" "${CONDA_ENV}"
 source "${CONDA_PATH}" "${CONDA_ENV}" || {
     echo "Failed to activate conda environment. Please check your conda path and environment name."
     exit 1
